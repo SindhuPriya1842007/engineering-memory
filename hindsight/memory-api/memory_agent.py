@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 
@@ -13,11 +12,10 @@ class MemoryAgent:
             api_key=os.environ["HINDSIGHT_API_LLM_API_KEY"]
         )
 
-        self.bank_id = "engineering-memory"
-
-    def store_experience(self, incident, experience):
+    def store_experience(self, bank_id, incident, experience):
         """
-        Store a resolved engineering incident in organizational memory.
+        Store a resolved engineering incident
+        in the company's isolated memory bank.
         """
 
         memory = f"""
@@ -47,15 +45,13 @@ Resolution: {experience["resolution"]}
 Lesson: {experience["lesson"]}
 """
 
-        # RETAIN is kept synchronous because this path is already
-        # confirmed working from the current Flask API.
         hindsight = Hindsight(
             base_url="http://127.0.0.1:8888"
         )
 
         try:
             hindsight.retain(
-                bank_id=self.bank_id,
+                bank_id=bank_id,
                 content=memory,
                 context="engineering incident experience"
             )
@@ -64,13 +60,14 @@ Lesson: {experience["lesson"]}
 
         return {
             "status": "stored",
-            "incident_id": incident["id"]
+            "incident_id": incident["id"],
+            "bank_id": bank_id
         }
 
-    async def find_similar_experiences(self, incident):
+    async def find_similar_experiences(self, bank_id, incident):
         """
         Retrieve relevant previous engineering experiences
-        using Hindsight's async client method.
+        from the company's isolated memory bank.
         """
 
         query = f"""
@@ -88,7 +85,7 @@ Description: {incident["description"]}
 
         try:
             results = await hindsight.arecall(
-                bank_id=self.bank_id,
+                bank_id=bank_id,
                 query=query
             )
 
@@ -104,8 +101,8 @@ Description: {incident["description"]}
 
     def generate_recommendation(self, incident, memories):
         """
-        Use recalled organizational memory to reason about
-        the current incident.
+        Use recalled organizational memory to reason
+        about the current incident.
         """
 
         memory_context = "\n\n".join(memories)
@@ -173,12 +170,14 @@ Rules:
             response.choices[0].message.content
         )
 
-    async def investigate_async(self, incident):
+    async def investigate_async(self, bank_id, incident):
         """
-        Investigate a new incident using organizational memory.
+        Investigate a new incident using the company's
+        isolated organizational memory.
         """
 
         memories = await self.find_similar_experiences(
+            bank_id,
             incident
         )
 
@@ -189,6 +188,7 @@ Rules:
 
         return {
             "incident_id": incident["id"],
+            "bank_id": bank_id,
             "recommendation": recommendation
         }
 

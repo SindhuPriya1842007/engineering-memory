@@ -32,6 +32,11 @@ def retain():
                 "error": "Request body is required."
             }), 400
 
+        if "bank_id" not in data:
+            return jsonify({
+                "error": "Missing required field: bank_id"
+            }), 400
+
         if "incident" not in data:
             return jsonify({
                 "error": "Missing required field: incident"
@@ -42,10 +47,12 @@ def retain():
                 "error": "Missing required field: experience"
             }), 400
 
+        bank_id = data["bank_id"]
         incident = data["incident"]
         experience = data["experience"]
 
         result = agent.store_experience(
+            bank_id,
             incident,
             experience
         )
@@ -63,15 +70,23 @@ def retain():
 async def recall():
 
     try:
-        incident = request.get_json()
+        data = request.get_json()
 
-        if not incident:
+        if not data:
             return jsonify({
                 "error": "Request body is required."
             }), 400
 
+        if "bank_id" not in data:
+            return jsonify({
+                "error": "Missing required field: bank_id"
+            }), 400
+
+        bank_id = data["bank_id"]
+
         result = await agent.investigate_async(
-            incident
+            bank_id,
+            data
         )
 
         return jsonify(result), 200
