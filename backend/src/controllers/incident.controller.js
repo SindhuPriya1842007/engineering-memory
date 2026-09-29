@@ -130,6 +130,7 @@ async function resolve(req, res) {
     solution: req.body.solution,
     rootCause: req.body.rootCause,
     verification: req.body.verification,
+    lesson: req.body.lesson,
     outcome: req.body.outcome
   });
 
@@ -156,7 +157,7 @@ async function resolve(req, res) {
     experience: {
       root_cause: experience.rootCause,
       resolution: experience.solution,
-      lesson: experience.verification
+      lesson: experience.lesson
     }
   });
   experience.retentionStatus = memory.stored ? "retained" : (memory.available ? "failed" : "unavailable");

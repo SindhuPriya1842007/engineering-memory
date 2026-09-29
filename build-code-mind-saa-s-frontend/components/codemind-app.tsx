@@ -348,6 +348,8 @@ function IncidentDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [memory, setMemory] = useState<any>(null);
   const [action, setAction] = useState("");
+  const [attemptResult, setAttemptResult] = useState("inconclusive");
+  const [attemptNotes, setAttemptNotes] = useState("");
   const [message, setMessage] = useState("");
 
   const load = () =>
@@ -372,6 +374,7 @@ function IncidentDetail({ id }: { id: string }) {
       const r = await api("/memory/recall", {
         method: "POST",
         body: JSON.stringify({
+          projectId: record.projectId,
           incidentId: record._id,
           problem:
             record.description ||
@@ -401,11 +404,14 @@ function IncidentDetail({ id }: { id: string }) {
       method: "POST",
       body: JSON.stringify({
         action,
-        result: "inconclusive",
+        result: attemptResult,
+        notes: attemptNotes,
       }),
     });
 
     setAction("");
+    setAttemptNotes("");
+    setAttemptResult("inconclusive");
     load();
   }
 
@@ -417,6 +423,7 @@ function IncidentDetail({ id }: { id: string }) {
 
     const rootCause = window.prompt("Root cause") || "";
     const verification = window.prompt("Verification") || "";
+    const lesson = window.prompt("Lesson learned (what should the team remember next time?)") || "";
 
     const r = await api(`/incidents/${record._id}/resolve`, {
       method: "POST",
@@ -424,6 +431,7 @@ function IncidentDetail({ id }: { id: string }) {
         solution,
         rootCause,
         verification,
+        lesson,
         outcome: "resolved",
       }),
     });
@@ -562,7 +570,16 @@ function IncidentDetail({ id }: { id: string }) {
                 onChange={(e) => setAction(e.target.value)}
                 placeholder="Record an investigation attempt"
               />
-
+              <select value={attemptResult} onChange={(e) => setAttemptResult(e.target.value as "failed" | "successful" | "inconclusive")}>
+                <option value="failed">Failed</option>
+                <option value="inconclusive">Inconclusive</option>
+                <option value="successful">Successful</option>
+              </select>
+              <input
+                value={attemptNotes}
+                onChange={(e) => setAttemptNotes(e.target.value)}
+                placeholder="What happened?"
+              />
               <Button onClick={addAttempt}>Add attempt</Button>
             </div>
 
@@ -622,18 +639,262 @@ function IncidentDetail({ id }: { id: string }) {
 }
 
 function WorkspacePage() {
-  const router = useRouter()
-  const [title,setTitle]=useState('')
-  const [description,setDescription]=useState('')
-  const [service,setService]=useState('')
-  const [errorMessage,setErrorMessage]=useState('')
-  const [errorType,setErrorType]=useState('')
-  const [environment,setEnvironment]=useState('production')
-  const [version,setVersion]=useState('')
-  const [loading,setLoading]=useState(false)
-  const [message,setMessage]=useState('')
-  async function createIncident(e:any){e.preventDefault();const projectId=getProjectId();if(!projectId){setMessage('Select or create a project first.');return}setLoading(true);try{const r=await api('/incidents',{method:'POST',body:JSON.stringify({projectId,title,description,errorMessage,errorType,service,environment,version,severity:'high'})});setMessage('Incident created.');router.push(`${projectPath}/incidents/${r.incident._id}`)}catch(e:any){setMessage(e.message)}finally{setLoading(false)}}
-  return <><Title eyebrow="ENGINEERING WORKSPACE" title="Capture a real incident" sub="Create an incident in MongoDB, investigate it, then resolve it into organizational memory."/><form className="create-form" onSubmit={createIncident}><label>Incident title<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="MongoDB connection failure" required/></label><label>Description<textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} placeholder="Describe what happened..."/></label><div className="form-two"><label>Service<input value={service} onChange={e=>setService(e.target.value)} placeholder="Checkout API"/></label><label>Error type<input value={errorType} onChange={e=>setErrorType(e.target.value)} placeholder="MongoServerSelectionError"/></label></div><label>Error message<textarea value={errorMessage} onChange={e=>setErrorMessage(e.target.value)} rows={3}/></label><div className="form-two"><label>Environment<select value={environment} onChange={e=>setEnvironment(e.target.value)}><option>production</option><option>staging</option><option>development</option></select></label><label>Version<input value={version} onChange={e=>setVersion(e.target.value)} placeholder="v1.0.0"/></label></div>{message&&<p>{message}</p>}<div className="form-footer"><Button href={`${projectPath}/incidents`} variant="secondary">View incidents</Button><Button type="submit">{loading?'Creating…':'Create incident'}<ArrowRight size={14}/></Button></div></form></>
+  const [activeFile, setActiveFile] = useState('src/services/db.ts')
+  const [openFiles, setOpenFiles] = useState(['src/services/db.ts', 'src/app.ts'])
+  const [terminalOpen, setTerminalOpen] = useState(true)
+  const [running, setRunning] = useState(false)
+  const [incident, setIncident] = useState<ApiIncident | null>(null)
+  const [memory, setMemory] = useState<any>(null)
+  const [memoryLoading, setMemoryLoading] = useState(false)
+  const [attemptAction, setAttemptAction] = useState('')
+  const [attemptResult, setAttemptResult] = useState<'failed' | 'successful' | 'inconclusive'>('failed')
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [message, setMessage] = useState('')
+  const [terminalLines, setTerminalLines] = useState<string[]>(['$ npm run dev'])
+  const [terminalCommand, setTerminalCommand] = useState('')
+
+  const fileContents: Record<string, string> = {
+    'src/app.ts': "import express from 'express'\nimport { connectDatabase } from './services/db'\nimport { registerRoutes } from './components/routes'\n\nconst app = express()\napp.use(express.json())\n\nasync function startServer() {\n  await connectDatabase()\n  registerRoutes(app)\n  app.listen(process.env.PORT ?? 3000)\n}\n\nstartServer().catch(console.error)",
+    'src/services/db.ts': "import mongoose from 'mongoose'\n\nconst options = {\n  maxPoolSize: 10,\n  serverSelectionTimeoutMS: 5000,\n  socketTimeoutMS: 45000,\n}\n\nexport async function connectDatabase() {\n  try {\n    await mongoose.connect(process.env.MONGO_URI!, options)\n    console.log(\"Database connected\")\n  } catch (error) {\n    console.error(\"MongoDB connection failed\", error)\n    throw error\n  }\n}",
+    'src/services/checkout.ts': "import { Order } from '../models/order'\nimport { paymentService } from './payments'\n\nexport async function createCheckout(userId: string) {\n  const order = await Order.findOne({ userId, status: 'draft' })\n  if (!order) throw new Error('No active order')\n\n  const payment = await paymentService.charge(order)\n  order.status = 'paid'\n  await order.save()\n  return { order, payment }\n}",
+    'src/utils/database.ts': "import type { ConnectOptions } from 'mongoose'\n\nexport function createConnectionOptions(): ConnectOptions {\n  return {\n    maxPoolSize: 10,\n    serverSelectionTimeoutMS: 5000,\n    retryWrites: true,\n  }\n}",
+    'src/auth.ts': "import jwt from 'jsonwebtoken'\n\nexport function createSession(userId: string) {\n  return jwt.sign({ sub: userId }, process.env.JWT_SECRET!, {\n    expiresIn: '12h',\n    issuer: 'acme-api',\n  })\n}",
+    'src/db.ts': "export { connectDatabase } from './services/db'\nexport { createConnectionOptions } from './utils/database'",
+    'tests/database.test.ts': "import { describe, expect, it } from 'vitest'\nimport { createConnectionOptions } from '../src/utils/database'\n\ndescribe('database options', () => {\n  it('uses a bounded connection pool', () => {\n    expect(createConnectionOptions().maxPoolSize).toBe(10)\n  })\n})",
+    'package.json': '{\n  "name": "acme-checkout-api",\n  "scripts": {\n    "dev": "tsx watch src/app.ts",\n    "test": "vitest run"\n  },\n  "dependencies": {\n    "mongoose": "^8.9.0",\n    "express": "^4.21.0"\n  }\n}',
+    'README.md': '# Acme Checkout API\n\nNode.js service for checkout, orders, and payments.\n\n## Development\n\n1. Set MONGO_URI in your environment.\n2. Run npm run dev.\n3. Run npm test before opening a pull request.'
+  }
+  const [source, setSource] = useState(fileContents[activeFile].split('\n'))
+
+  function selectFile(file: string) {
+    setActiveFile(file)
+    setSource((fileContents[file] || '// Select a file to inspect').split('\n'))
+    setOpenFiles(current => current.includes(file) ? current : [...current, file])
+  }
+
+  async function runWorkspace() {
+    const projectId = getProjectId()
+    if (!projectId) {
+      setMessage('Select a project first so Engineering Memory knows which team owns this experience.')
+      return
+    }
+    setRunning(true)
+    setMessage('Running workspace and capturing the failure…')
+    setMemory(null)
+    setTerminalLines(lines => [...lines, '$ npm run dev', '✓ Starting development server…', 'Error: MongoServerSelectionError', 'MongoNetworkError: connection refused'])
+    try {
+      await api('/events/batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          events: [
+            { projectId, type: 'RUN_STARTED', source: 'workspace', payload: { command: 'npm run dev', filePath: 'src/app.ts' } },
+            { projectId, type: 'TERMINAL_ERROR', source: 'workspace', payload: { errorType: 'MongoServerSelectionError', message: 'MongoNetworkError: connection refused', command: 'npm run dev' } },
+          ]
+        })
+      })
+
+      const result = await api<{ incident: ApiIncident }>('/incidents', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId,
+          title: 'MongoDB connection failure',
+          description: 'The checkout service fails to start because the database connection is refused.',
+          errorMessage: 'MongoNetworkError: connection refused',
+          errorType: 'MongoServerSelectionError',
+          stackTrace: 'MongoServerSelectionError: connect ECONNREFUSED 127.0.0.1:27017',
+          filePath: 'src/services/db.ts',
+          lineNumber: 10,
+          command: 'npm run dev',
+          logs: 'Error: MongoServerSelectionError\nMongoNetworkError: connection refused',
+          language: 'TypeScript',
+          framework: 'Express',
+          runtime: 'Node.js 20',
+          service: 'Checkout API',
+          environment: 'development',
+          version: '2.8.1',
+          severity: 'high',
+          recentChange: 'Updated MongoDB connection handling'
+        })
+      })
+      setIncident(result.incident)
+      setMessage('Failure captured. Engineering Memory is checking prior team experience and generating an initial investigation plan…')
+      await checkMemory(result.incident)
+    } catch (error: any) {
+      setTerminalLines(lines => [...lines, `✕ ${error.message || 'Command failed'}`])
+      setMessage(error.message || 'Workspace run failed.')
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function runTerminalCommand() {
+    const command = terminalCommand.trim()
+    if (!command || running) return
+    setTerminalCommand('')
+    if (command === 'npm run dev') {
+      await runWorkspace()
+      return
+    }
+    if (command === 'npm test' || command === 'npm run test') {
+      setTerminalLines(lines => [...lines, `$ ${command}`, '✓ database.test.ts  4 passed', '✓ Test suite completed'])
+      setMessage('Tests passed in the simulated workspace. No new incident was created.')
+      return
+    }
+    if (command === 'git diff') {
+      setTerminalLines(lines => [...lines, '$ git diff', 'diff --git a/src/services/db.ts b/src/services/db.ts', '+  maxPoolSize: 10,', '+  serverSelectionTimeoutMS: 5000'])
+      return
+    }
+    if (command === 'clear') {
+      setTerminalLines([])
+      return
+    }
+    setTerminalLines(lines => [...lines, `$ ${command}`, `command not found: ${command.split(' ')[0]}`])
+  }
+
+  async function checkMemory(target = incident) {
+    if (!target) return
+    setMemoryLoading(true)
+    try {
+      const result = await api('/memory/recall', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: target.projectId,
+          incidentId: target._id,
+          problem: target.description || target.errorMessage || target.title,
+          description: target.description,
+          errorMessage: target.errorMessage,
+          errorType: target.errorType,
+          stackTrace: target.stackTrace,
+          service: target.service,
+          language: target.language,
+          framework: target.framework,
+          environment: target.environment,
+          version: target.version,
+          attempts: []
+        })
+      })
+      setMemory(result)
+      setMessage(result.matchFound ? 'Memory found. Review the evidence before changing the code.' : 'No close memory found. This may be a new failure pattern.')
+    } catch (error: any) {
+      setMessage(error.message || 'Memory recall failed.')
+    } finally {
+      setMemoryLoading(false)
+    }
+  }
+
+  async function askMemory() {
+    const projectId = getProjectId()
+    if (!projectId || !question.trim()) return
+    setAsking(true)
+    try {
+      const result = await api('/memory/reflect', {
+        method: 'POST',
+        body: JSON.stringify({ projectId, query: `${question.trim()}\n\nCurrent workspace context — file: ${activeFile}\n\`\`\`typescript\n${source.join('\n')}\n\`\`\`` })
+      })
+      setAnswer(result.answer || 'No synthesized answer was returned.')
+    } catch (error: any) {
+      setAnswer(error.message || 'Engineering Memory could not answer that question.')
+    } finally {
+      setAsking(false)
+    }
+  }
+
+  async function recordAttempt(result: 'failed' | 'successful') {
+    if (!incident || !attemptAction.trim()) return
+    try {
+      await api(`/incidents/${incident._id}/attempts`, {
+        method: 'POST',
+        body: JSON.stringify({ action: attemptAction, result, notes: result === 'failed' ? 'Failure persisted after the attempted change.' : 'Failure cleared after the attempted change.' })
+      })
+      setAttemptAction('')
+      setAttemptResult(result)
+      setMessage(`Recorded ${result} attempt. This becomes part of the experience when the incident is resolved.`)
+    } catch (error: any) {
+      setMessage(error.message || 'Could not record attempt.')
+    }
+  }
+
+  async function resolveIncident() {
+    if (!incident) return
+    const solution = window.prompt('What fixed the incident?')
+    if (!solution) return
+    const rootCause = window.prompt('Root cause') || ''
+    const lesson = window.prompt('What should the team remember next time?') || ''
+    const verification = window.prompt('How did you verify the fix?') || ''
+    try {
+      const result = await api(`/incidents/${incident._id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ solution, rootCause, lesson, verification, outcome: 'resolved' })
+      })
+      setIncident(result.incident)
+      setMessage(result.memory?.retained ? 'Resolved and retained in Engineering Memory.' : 'Resolved. Memory retention is not currently available.')
+    } catch (error: any) {
+      setMessage(error.message || 'Could not resolve incident.')
+    }
+  }
+
+  const scenarios = memory?.matches || []
+  const recommendation = memory?.recommendation || {}
+
+  return (
+    <div className="workspace-page">
+      <div className="workspace-heading">
+        <div><span className="eyebrow">E-COMMERCE PLATFORM / WORKSPACE</span><h1>Developer workspace</h1><p>Run code, investigate failures, and keep your team&apos;s hard-won engineering knowledge beside the editor.</p></div>
+        <div><Button variant="secondary" onClick={runWorkspace}><Command size={14} />{running ? 'Running…' : 'Run workspace'}</Button><Button variant="secondary" href={`${projectPath}/incidents`}>Incidents<ArrowUpRight size={14} /></Button></div>
+      </div>
+      <div className="ide-window">
+        <div className="ide-top"><span className="window-dots"><i /><i /><i /></span><span><Code2 size={13} /> ecommerce-platform</span><span className="ide-branch"><GitBranch size={12} /> main <span className="ide-separator">/</span> TypeScript</span></div>
+        <div className="ide-body">
+          <aside className="file-tree" aria-label="Project file explorer">
+            <div className="explorer-heading"><b>EXPLORER</b><button aria-label="Project files"><MoreHorizontal size={14} /></button></div>
+            <span className="tree-root">⌄ ECOMMERCE-PLATFORM</span><span className="tree-folder">⌄ src</span><span className="tree-folder tree-nested">⌄ services</span>
+            {['src/services/db.ts','src/services/checkout.ts'].map(file => <button key={file} className={`tree-file ${activeFile === file ? 'selected' : ''}`} onClick={() => selectFile(file)}><FileCode2 size={13} />{file.split('/').pop()}</button>)}
+            <span className="tree-folder tree-nested">⌄ utils</span><button className={`tree-file ${activeFile === 'src/utils/database.ts' ? 'selected' : ''}`} onClick={() => selectFile('src/utils/database.ts')}><FileCode2 size={13} />database.ts</button>
+            {['src/app.ts','src/db.ts','src/auth.ts'].map(file => <button key={file} className={`tree-file ${activeFile === file ? 'selected' : ''}`} onClick={() => selectFile(file)}><FileCode2 size={13} />{file.split('/').pop()}</button>)}
+            <span className="tree-folder">⌄ tests</span><button className={`tree-file ${activeFile === 'tests/database.test.ts' ? 'selected' : ''}`} onClick={() => selectFile('tests/database.test.ts')}><FileCode2 size={13} />database.test.ts</button>
+            {['package.json','README.md'].map(file => <button key={file} className={`tree-file ${activeFile === file ? 'selected' : ''}`} onClick={() => selectFile(file)}><FileCode2 size={13} />{file}</button>)}
+          </aside>
+          <section className="editor-column" aria-label="Code editor">
+            <div className="editor-tabs" role="tablist" aria-label="Open files">{openFiles.map(file => <button key={file} role="tab" aria-selected={activeFile === file} className={`editor-tab ${activeFile === file ? 'active' : ''}`} onClick={() => selectFile(file)}><FileCode2 size={12} />{file.split('/').pop()}</button>)}</div>
+            <div className="code-viewport" role="region" aria-label={`${activeFile} source code`}><div className="editor-breadcrumb"><span>src</span><ChevronRight size={11} /><span>{activeFile.split('/').slice(1,-1).join('/') || 'root'}</span><ChevronRight size={11} /><b>{activeFile.split('/').pop()}</b></div><div className="code-editor"><textarea className="code-input" value={source.join('\n')} onChange={e => setSource(e.target.value.split('\n'))} spellCheck={false} /></div></div>
+            <section className={`terminal ${terminalOpen ? '' : 'terminal-collapsed'}`} aria-label="Terminal"><div className="terminal-head"><span><Command size={12} /> TERMINAL <small>npm run dev</small></span><button onClick={() => setTerminalOpen(open => !open)} aria-expanded={terminalOpen}>{terminalOpen ? 'Hide terminal' : 'Show terminal'}<ChevronDown className={terminalOpen ? '' : 'terminal-expand-icon'} size={13} /></button></div>{terminalOpen && <div className="terminal-output"><code>{terminalLines.map((line, i) => <span key={`${line}-${i}`} className={line.startsWith('Error') || line.startsWith('✕') || line.includes('command not found') ? 'terminal-error' : line.startsWith('✓') ? 'terminal-success' : ''}>{line}</span>)}<span className="terminal-prompt"><b>$</b><input aria-label="Terminal command" value={terminalCommand} onChange={e => setTerminalCommand(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') runTerminalCommand() }} placeholder="type a command…" /><i /></span></code></div>}</section>
+          </section>
+          <aside className="ai-panel memory-ai-panel" aria-label="Engineering Memory">
+            <div className="memory-panel-title"><BrainCircuit size={16} /><b>Engineering Memory</b><span className="prototype-label">LIVE</span></div>
+            <div className="memory-context-label">{incident ? 'INCIDENT MODE' : 'CODEBASE MODE'}</div>
+            <div className="memory-outcome related-outcome memory-ask-first">
+              <div className="outcome-heading"><BrainCircuit size={15} /><b>Ask your team memory</b></div>
+              <p className="related-copy">Ask about past incidents, known fixes, failed approaches, or what your team learned. This is available before you run anything.</p>
+              <div className="workspace-question-row"><input value={question} onChange={e => setQuestion(e.target.value)} placeholder={incident ? 'Why did this fail before?' : 'What do we know about MongoDB failures?'} onKeyDown={e => { if (e.key === 'Enter') askMemory() }} /><button onClick={askMemory} disabled={asking}>{asking ? '…' : 'Ask'}</button></div>
+              {answer && <p className="workspace-answer">{answer}</p>}
+            </div>
+            {!incident && <div className="memory-empty-hint"><b>Ready before the first run.</b><span> The assistant can explain code, search team memory, and answer questions now. Once a command fails, it automatically switches into incident mode.</span></div>}
+            {incident && <>
+              <div className="problem-callout"><ShieldAlert size={15} /><div><small>PROBLEM DETECTED</small><b>{incident.errorType || incident.title}</b><span>{incident.errorMessage}</span></div></div>
+              <div className="memory-outcome similar-outcome">
+                <div className="outcome-heading">{memory?.matchFound ? <CheckCircle2 size={15} /> : <Activity size={15} />}<b>{memoryLoading ? 'Searching engineering memory…' : memory?.matchFound ? 'Prior team experience found' : 'No prior memory — here is the initial investigation plan'}</b></div>
+                {memoryLoading && <div className="memory-loading"><span className="loading-spinner" />Recalling similar incidents and lessons…</div>}
+                {!memoryLoading && memory && scenarios.length > 0 && <div className="related-list">{scenarios.slice(0,3).map((item:any) => <div key={item.incidentId || item.title}><b>{item.title}</b><span>{item.summary}</span></div>)}</div>}
+                {!memoryLoading && memory?.recommendation?.previousAttempts?.length > 0 && <div className="approach-list"><small>REMEMBERED ATTEMPTS</small>{memory.recommendation.previousAttempts.slice(0,4).map((item:any,i:number) => <p key={i} className={item.result === 'successful' ? 'successful-approach' : 'failed-approach'}>{item.result === 'successful' ? '✓' : '×'} {item.action || item}</p>)}</div>}
+                {!memoryLoading && memory?.recommendation?.successfulSolution && <p className="memory-warning"><b>Remembered solution:</b> {memory.recommendation.successfulSolution}</p>}
+                {!memoryLoading && memory?.recommendation?.reasoning && <div className="initial-plan"><small>{memory?.matchFound ? 'WHY THIS MATTERS' : 'SUGGESTED NEXT STEPS'}</small>{memory.recommendation.reasoning.split('\n').filter(Boolean).slice(0,4).map((item:string,i:number) => <p key={i}><span>{i + 1}</span>{item}</p>)}</div>}
+                {!memoryLoading && !memory && <button className="memory-search-button" onClick={() => checkMemory()} disabled={memoryLoading}>Check Engineering Memory <ArrowRight size={13} /></button>}
+              </div>
+              <div className="memory-outcome related-outcome">
+                <div className="outcome-heading"><Activity size={15} /><b>Investigation loop</b></div>
+                <input value={attemptAction} onChange={e => setAttemptAction(e.target.value)} placeholder="What did you try?" />
+                <div className="workspace-attempt-actions"><button onClick={() => recordAttempt('failed')}>Record failed</button><button onClick={() => recordAttempt('successful')}>Record successful</button></div>
+                {incident.status !== 'resolved' && <button className="memory-search-button" onClick={resolveIncident}>Resolve &amp; remember <BrainCircuit size={13} /></button>}
+              </div>
+            </>}
+            {message && <p className="workspace-message">{message}</p>}
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function TeamPage() {

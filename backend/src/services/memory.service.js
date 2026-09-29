@@ -150,4 +150,19 @@ async function recallExperience(data) {
   };
 }
 
-module.exports = { retainExperience, recallExperience };
+async function reflectExperience(data) {
+  const bankId = bankIdFrom(data);
+  if (!bankId) return unavailable("Organization context is required for memory reflection");
+  const result = await request("/memory/reflect", {
+    bank_id: bankId,
+    query: data.query || ""
+  });
+  if (!result.available) return result;
+  return {
+    available: true,
+    answer: result.body?.answer || "",
+    sources: Array.isArray(result.body?.sources) ? result.body.sources : []
+  };
+}
+
+module.exports = { retainExperience, recallExperience, reflectExperience };

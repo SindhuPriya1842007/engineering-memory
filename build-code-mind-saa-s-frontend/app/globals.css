@@ -1475,3 +1475,28 @@ td .assignee small { color: #919bad; font-size: 8px; }
     display: none;
   }
 }
+.workspace-attempt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.workspace-attempt-actions button { border: 1px solid var(--line, #e5e7eb); background: var(--surface, #fff); border-radius: 8px; padding: 8px 10px; cursor: pointer; font: inherit; }
+.workspace-attempt-actions button:hover { border-color: currentColor; }
+.workspace-message { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted, #6b7280); }
+.memory-outcome input { width: 100%; box-sizing: border-box; margin: 8px 0; }
+
+.workspace-question-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin: 8px 0; }
+.workspace-question-row input { margin: 0; }
+.workspace-question-row button { border: 0; border-radius: 8px; padding: 8px 11px; cursor: pointer; background: #111827; color: white; font: inherit; }
+.workspace-answer { margin: 8px 0 0; padding: 10px; border-radius: 8px; background: rgba(99,102,241,.06); font-size: 12px; line-height: 1.55; }
+
+/* CodeMind workspace polish */
+.memory-context-label { margin-top: 5px; color: #7785a1; font-size: 7px; font-weight: 750; letter-spacing: 1px; }
+.memory-ask-first { margin-top: 10px; }
+.memory-ask-first .related-copy { margin: 7px 0 10px; }
+.initial-plan { margin-top: 11px; padding: 9px; border: 1px solid #3a4762; border-radius: 7px; background: #111c31; }
+.initial-plan > small { color: #9fa9bf; font-size: 7px; font-weight: 750; letter-spacing: .7px; }
+.initial-plan p { display: flex; gap: 8px; margin: 7px 0 0; color: #c2ccdd; font-size: 8px; line-height: 1.5; }
+.initial-plan p span { display: grid; width: 16px; height: 16px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #292f56; color: #aaa3ff; font-size: 7px; font-weight: 750; }
+.terminal-prompt input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #d6deee; font: inherit; }
+.terminal-prompt input::placeholder { color: #5f6d86; }
+.workspace-message { margin: 10px 0 0; color: #8f9db6; font-size: 8px; line-height: 1.55; }
+.workspace-question-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.workspace-question-row input { min-width: 0; }
+@media (min-width: 1100px) { .ide-body { grid-template-columns: 205px minmax(0, 1fr) 335px; } }

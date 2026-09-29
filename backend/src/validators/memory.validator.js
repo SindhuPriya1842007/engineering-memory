@@ -22,4 +22,5 @@ const recallSchema = z.object({
   })).max(20).optional().default([]),
   createdAt: z.coerce.date().optional()
 });
-module.exports = { recallSchema };
+const reflectSchema = z.object({ projectId: objectId, query: z.string().trim().min(3).max(5000) });
+module.exports = { recallSchema, reflectSchema };

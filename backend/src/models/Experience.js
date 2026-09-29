@@ -11,6 +11,7 @@ const experienceSchema = new mongoose.Schema(
     solution: { type: String, required: true, trim: true, maxlength: 5000 },
     rootCause: { type: String, trim: true, maxlength: 5000, default: "" },
     verification: { type: String, trim: true, maxlength: 5000, default: "" },
+    lesson: { type: String, trim: true, maxlength: 5000, default: "" },
     outcome: { type: String, trim: true, maxlength: 500, default: "resolved" },
     retainedAt: Date,
     retentionStatus: { type: String, enum: ["pending", "retained", "unavailable", "failed"], default: "pending" }

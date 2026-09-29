@@ -1,6 +1,10 @@
 import json
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from groq import Groq
 from hindsight_client import Hindsight
 
@@ -11,6 +15,25 @@ class MemoryAgent:
         self.groq = Groq(
             api_key=os.environ["HINDSIGHT_API_LLM_API_KEY"]
         )
+
+    def _client(self):
+        return Hindsight(
+            base_url=os.getenv("HINDSIGHT_BASE_URL", "http://127.0.0.1:8888"),
+            api_key=os.getenv("HINDSIGHT_API_KEY") or None,
+        )
+
+    def _ensure_bank(self, hindsight, bank_id):
+        try:
+            hindsight.create_bank(
+                bank_id=bank_id,
+                name=f"Engineering Memory {bank_id}"
+            )
+        except Exception as error:
+            # Bank creation is safe to repeat. Only ignore the common
+            # already-exists response; authentication/network failures must surface.
+            message = str(error).lower()
+            if "already exists" not in message and "409" not in message and "conflict" not in message:
+                raise
 
     def store_experience(self, bank_id, incident, experience):
         """
@@ -45,11 +68,10 @@ Resolution: {experience["resolution"]}
 Lesson: {experience["lesson"]}
 """
 
-        hindsight = Hindsight(
-            base_url="http://127.0.0.1:8888"
-        )
+        hindsight = self._client()
 
         try:
+            self._ensure_bank(hindsight, bank_id)
             hindsight.retain(
                 bank_id=bank_id,
                 content=memory,
@@ -64,7 +86,7 @@ Lesson: {experience["lesson"]}
             "bank_id": bank_id
         }
 
-    async def find_similar_experiences(self, bank_id, incident):
+    def find_similar_experiences(self, bank_id, incident):
         """
         Retrieve relevant previous engineering experiences
         from the company's isolated memory bank.
@@ -79,12 +101,11 @@ Version: {incident["version"]}
 Description: {incident["description"]}
 """
 
-        hindsight = Hindsight(
-            base_url="http://127.0.0.1:8888"
-        )
+        hindsight = self._client()
 
         try:
-            results = await hindsight.arecall(
+            self._ensure_bank(hindsight, bank_id)
+            results = hindsight.recall(
                 bank_id=bank_id,
                 query=query
             )
@@ -97,7 +118,22 @@ Description: {incident["description"]}
             return memories
 
         finally:
-            await hindsight.aclose()
+            self._close_hindsight(hindsight)
+
+    def reflect(self, bank_id, query):
+        """Ask Hindsight to synthesize an answer from organizational memory."""
+        hindsight = self._client()
+        try:
+            self._ensure_bank(hindsight, bank_id)
+            response = hindsight.reflect(bank_id=bank_id, query=query)
+            raw_sources = getattr(response, "sources", []) or []
+            sources = [getattr(source, "text", str(source)) for source in raw_sources] if isinstance(raw_sources, list) else []
+            return {
+                "answer": getattr(response, "text", str(response)),
+                "sources": sources
+            }
+        finally:
+            self._close_hindsight(hindsight)
 
     def generate_recommendation(self, incident, memories):
         """
@@ -170,13 +206,13 @@ Rules:
             response.choices[0].message.content
         )
 
-    async def investigate_async(self, bank_id, incident):
+    def investigate(self, bank_id, incident):
         """
         Investigate a new incident using the company's
         isolated organizational memory.
         """
 
-        memories = await self.find_similar_experiences(
+        memories = self.find_similar_experiences(
             bank_id,
             incident
         )

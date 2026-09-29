@@ -4,6 +4,13 @@ const { sanitizeObject } = require("../utils/sanitizeSecrets");
 const Experience = require("../models/Experience");
 const incidentEngine = require("../services/incident-engine.service");
 
+async function reflect(req, res) {
+  const { project } = await requireProjectMember(req.user._id, req.body.projectId);
+  const remote = await memoryService.reflectExperience({ organizationId: project.organizationId, query: req.body.query });
+  res.json({ success: true, available: remote.available, answer: remote.answer || "", sources: remote.sources || [] });
+}
+
+
 function normalizeMemory(memory) {
   return {
     incidentId: memory.incident_id || null,
@@ -14,6 +21,7 @@ function normalizeMemory(memory) {
     solution: "",
     rootCause: memory.root_cause || "",
     verification: "",
+    lesson: "",
     outcome: ""
   };
 }
@@ -55,7 +63,7 @@ async function recall(req, res) {
     },
     failed_attempts: (experience.attempts || []).filter((a) => a.result === "failed").map((a) => ({ action: a.action })),
     successful_attempts: (experience.attempts || []).filter((a) => a.result === "successful").map((a) => ({ action: a.action })),
-    lessons: [experience.verification, experience.solution, experience.outcome].filter(Boolean),
+    lessons: [experience.lesson, experience.verification, experience.solution, experience.outcome].filter(Boolean),
     root_cause: experience.rootCause || ""
   }));
   const engine = await incidentEngine.recall({
@@ -83,11 +91,9 @@ async function recall(req, res) {
       summary: item.summary
     })),
     recommendation: {
-      summary: engine.available
-        ? (engine.body.recommended_next_step || engine.body.lesson || "Incident Engine processed the retrieved experiences.")
-        : (similarIncident
-          ? `Similar incident ${similarIncident.incident_id || ""} was found.`
-          : (firstMatch ? firstMatch.summary : "")),
+      summary: similarIncident
+        ? `Hindsight found a related incident: ${similarIncident.incident_id || "unknown"}.`
+        : (firstMatch ? firstMatch.summary : (investigateNow.length ? "No prior memory matched this failure. Here is an initial investigation plan based on the current incident." : (engine.available ? (engine.body.recommended_next_step || engine.body.lesson || "No remembered recommendation was returned.") : ""))),
       previousAttempts: failedApproaches.length ? failedApproaches : (firstMatch?.attempts || []),
       successfulSolution: successfulApproaches.join("\n"),
       rootCause: facts.join("\n") || firstMatch?.rootCause || "",
@@ -104,4 +110,4 @@ async function recall(req, res) {
   });
 }
 
-module.exports = { recall };
+module.exports = { recall, reflect };

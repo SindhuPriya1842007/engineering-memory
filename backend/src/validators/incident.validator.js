@@ -47,6 +47,7 @@ const resolveSchema = z.object({
   solution: z.string().trim().min(2).max(5000),
   rootCause: z.string().trim().max(5000).optional().default(""),
   verification: z.string().trim().max(5000).optional().default(""),
+  lesson: z.string().trim().max(5000).optional().default(""),
   outcome: z.string().trim().max(500).optional().default("resolved")
 });
 

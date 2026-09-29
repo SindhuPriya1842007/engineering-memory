@@ -16,7 +16,8 @@ def home():
         "status": "running",
         "endpoints": [
             "POST /memory/retain",
-            "POST /memory/recall"
+            "POST /memory/recall",
+            "POST /memory/reflect"
         ]
     })
 
@@ -67,7 +68,7 @@ def retain():
 
 
 @app.post("/memory/recall")
-async def recall():
+def recall():
 
     try:
         data = request.get_json()
@@ -84,7 +85,7 @@ async def recall():
 
         bank_id = data["bank_id"]
 
-        result = await agent.investigate_async(
+        result = agent.investigate(
             bank_id,
             data
         )
@@ -98,6 +99,22 @@ async def recall():
         }), 500
 
 
+@app.post("/memory/reflect")
+def reflect():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body is required."}), 400
+        if "bank_id" not in data:
+            return jsonify({"error": "Missing required field: bank_id"}), 400
+        if not data.get("query"):
+            return jsonify({"error": "Missing required field: query"}), 400
+        result = agent.reflect(data["bank_id"], data["query"])
+        return jsonify(result), 200
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
 if __name__ == "__main__":
 
     print(
@@ -109,3 +126,4 @@ if __name__ == "__main__":
         port=8000,
         debug=False
     )
+
